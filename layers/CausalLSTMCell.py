@@ -9,29 +9,34 @@ class CausalLSTMCell():
         """Initialize the Causal LSTM cell.
         Args:
             layer_name: layer names for different lstm layers.
-            filter_size: int tuple thats the height and width of the filter.
-            num_hidden_in: number of units for input tensor.
-            num_hidden_out: number of units for output tensor.
-            seq_shape: shape of a sequence.
-            forget_bias: float, The bias added to forget gates.
-            tln: whether to apply tensor layer normalization
+            filter_size: int tuple thats the height and width of the filter.//滤波器的长宽值
+            num_hidden_in: number of units for input tensor.//输入张量的单元数
+            num_hidden_out: number of units for output tensor.//输出张量的单元数
+            seq_shape: shape of a sequence.//序列的形状
+            forget_bias: float, The bias added to forget gates.//遗忘门上添加偏置
+            tln: whether to apply tensor layer normalization //是否使用张量层归一化
         """
         self.layer_name = layer_name
         self.filter_size = filter_size
         self.num_hidden_in = num_hidden_in
         self.num_hidden = num_hidden_out
-        self.batch = seq_shape[0]
+        self.batch = seq_shape[0]//batch即序列的第一维
         self.height = seq_shape[2]
         self.width = seq_shape[3]
         self.layer_norm = tln
         self._forget_bias = forget_bias
-        self.initializer = tf.random_uniform_initializer(-initializer,initializer)
+        self.initializer = tf.random_uniform_initializer(-initializer,initializer)//初始化的程序
 
+        //定义一个初始状态的四维矩阵：[seq_shape[0],seq_shape[2],seq_shape[3],num_hidden_out,]
     def init_state(self):
         return tf.zeros([self.batch, self.height, self.width, self.num_hidden],
                         dtype=tf.float32)
+    
 
+    //调用x,h,c,m变量
     def __call__(self, x, h, c, m):
+        //如果h不为None，可以定义为全为0的四维向量h
+        //h：[seq_shape[0],seq_shape[2],seq_shape[3],num_hidden_out]
         if h is None:
             h = tf.zeros([self.batch, self.height, self.width,
                           self.num_hidden],
@@ -40,12 +45,18 @@ class CausalLSTMCell():
             c = tf.zeros([self.batch, self.height, self.width,
                           self.num_hidden],
                          dtype=tf.float32)
+        //m:[seq_shape[0],seq_shape[2],seq_shape[3],num_hidden_in]
         if m is None:
             m = tf.zeros([self.batch, self.height, self.width,
                           self.num_hidden_in],
                          dtype=tf.float32)
 
+        //layer_name,方便管理参数，更好的封装
         with tf.variable_scope(self.layer_name):
+            //inputs = h(四维向量);filters输出空间的维数：num_hidden_out*4;
+            //kernel_size卷积窗的高和宽：filter_size;strides:卷积的横纵向的步长（一个整数：横纵相等）
+            //padding:'same'表示不够卷积大小的块就补'0';kernel_initializer:卷积核的初始化，使用上述的初始化函数
+            //name:'temporal_state_transition',时间状态转换
             h_cc = tf.layers.conv2d(
                 h, self.num_hidden*4,
                 self.filter_size, 1, padding='same',
@@ -56,21 +67,28 @@ class CausalLSTMCell():
                 self.filter_size, 1, padding='same',
                 kernel_initializer=self.initializer,
                 name='temporal_memory_transition')
+            //name:时间记忆转换
             m_cc = tf.layers.conv2d(
                 m, self.num_hidden*3,
                 self.filter_size, 1, padding='same',
                 kernel_initializer=self.initializer,
                 name='spatial_memory_transition')
+            //name:空间状态转换
             if self.layer_norm:
+                //调用TensorLayerNorm中的函数
+                //批归一化
                 h_cc = tensor_layer_norm(h_cc, 'h2c')
                 c_cc = tensor_layer_norm(c_cc, 'c2c')
                 m_cc = tensor_layer_norm(m_cc, 'm2m')
-
+            //tf.split,把一个张量切分成几份，h_cc准备切分的张量,切成4份，在第三个维度上切
+            tf.split(value,num_or_size_splits,axis=0,num=None,name='split')
+            //value:准备切分的张量,num_or_size_splits:切成几份,axis:在第几个维度上切
             i_h, g_h, f_h, o_h = tf.split(h_cc, 4, 3)
             i_c, g_c, f_c = tf.split(c_cc, 3, 3)
             i_m, f_m, m_m = tf.split(m_cc, 3, 3)
 
             if x is None:
+                //计算x元素的Sigmoid 
                 i = tf.sigmoid(i_h + i_c)
                 f = tf.sigmoid(f_h + f_c + self._forget_bias)
                 g = tf.tanh(g_h + g_c)
