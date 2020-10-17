@@ -57,6 +57,7 @@ class CausalLSTMCell():
             //kernel_size卷积窗的高和宽：filter_size;strides:卷积的横纵向的步长（一个整数：横纵相等）
             //padding:'same'表示不够卷积大小的块就补'0';kernel_initializer:卷积核的初始化，使用上述的初始化函数
             //name:'temporal_state_transition',时间状态转换
+            //创建了一个卷积核，将输入进行卷积来输出一个 tensor
             h_cc = tf.layers.conv2d(
                 h, self.num_hidden*4,
                 self.filter_size, 1, padding='same',
@@ -93,6 +94,7 @@ class CausalLSTMCell():
                 f = tf.sigmoid(f_h + f_c + self._forget_bias)
                 g = tf.tanh(g_h + g_c)
             else:
+                //name:'输入状态'
                 x_cc = tf.layers.conv2d(
                     x, self.num_hidden*7,
                     self.filter_size, 1, padding='same',
@@ -102,13 +104,13 @@ class CausalLSTMCell():
                     x_cc = tensor_layer_norm(x_cc, 'x2c')
 
                 i_x, g_x, f_x, o_x, i_x_, g_x_, f_x_ = tf.split(x_cc, 7, 3)
-
+                //计算元素的Sigmoid
                 i = tf.sigmoid(i_x + i_h + i_c)
                 f = tf.sigmoid(f_x + f_h + f_c + self._forget_bias)
                 g = tf.tanh(g_x + g_h + g_c)
-
+            //更新c的状态
             c_new = f * c + i * g
-
+            //c到m的状态转变
             c2m = tf.layers.conv2d(
                 c_new, self.num_hidden*4,
                 self.filter_size, 1, padding='same',
@@ -118,7 +120,7 @@ class CausalLSTMCell():
                 c2m = tensor_layer_norm(c2m, 'c2m')
 
             i_c, g_c, f_c, o_c = tf.split(c2m, 4, 3)
-
+            //Sigmoid和tanh
             if x is None:
                 ii = tf.sigmoid(i_c + i_m)
                 ff = tf.sigmoid(f_c + f_m + self._forget_bias)
@@ -127,9 +129,9 @@ class CausalLSTMCell():
                 ii = tf.sigmoid(i_c + i_x_ + i_m)
                 ff = tf.sigmoid(f_c + f_x_ + f_m + self._forget_bias)
                 gg = tf.tanh(g_c + g_x_)
-
+            //m的状态更新
             m_new = ff * tf.tanh(m_m) + ii * gg
-
+            //o到m的状态更新
             o_m = tf.layers.conv2d(
                 m_new, self.num_hidden,
                 self.filter_size, 1, padding='same',
@@ -137,18 +139,18 @@ class CausalLSTMCell():
                 name='m_to_o')
             if self.layer_norm:
                 o_m = tensor_layer_norm(o_m, 'm2o')
-
+            //根据x的状态选择不同的o
             if x is None:
                 o = tf.tanh(o_h + o_c + o_m)
             else:
                 o = tf.tanh(o_x + o_h + o_c + o_m)
-
+            //将新的c和m的在最后一维拼接起来
             cell = tf.concat([c_new, m_new],-1)
             cell = tf.layers.conv2d(cell, self.num_hidden, 1, 1,
                                     padding='same', name='memory_reduce')
-
+            //h状态的更新
             h_new = o * tf.tanh(cell)
-
+            //返回，更新后的h,c,m
             return h_new, c_new, m_new
 
 
