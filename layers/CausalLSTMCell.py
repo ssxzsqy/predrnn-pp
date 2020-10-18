@@ -63,6 +63,7 @@ class CausalLSTMCell():
                 self.filter_size, 1, padding='same',
                 kernel_initializer=self.initializer,
                 name='temporal_state_transition')
+            //时间状态转换
             c_cc = tf.layers.conv2d(
                 c, self.num_hidden*3,
                 self.filter_size, 1, padding='same',
